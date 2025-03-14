@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Test files
+test-quiz.json
+
+# Export files
+public/exports/
+
+# CDK files
+cdk-app/
+infrastructure/
+
+# Load test files
+load-test/
+
+# Local DynamoDB files
+.dynamodb/

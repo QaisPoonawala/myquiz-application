@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xQuizit - Interactive Quiz Platform</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="watermark">Created by Qais and PKD</div>
+    <div class="container">
+        <header>
+            <div class="brand">
+                <div class="logo">
+                    <svg width="40" height="40" viewBox="0 0 40 40">
+                        <path d="M20 0C8.954 0 0 8.954 0 20s8.954 20 20 20 20-8.954 20-20S31.046 0 20 0zm0 36c-8.837 0-16-7.163-16-16S11.163 4 20 4s16 7.163 16 16-7.163 16-16 16z" fill="#007bff"/>
+                        <path d="M28 12L16 24l-4-4" stroke="#007bff" stroke-width="4" fill="none"/>
+                        <circle cx="20" cy="20" r="6" fill="#007bff"/>
+                    </svg>
+                </div>
+                <h1>xQuizIt</h1>
+            </div>
+            <nav>
+                <button onclick="showQuizzes()">All Quizzes</button>
+                <button onclick="showQuizForm()">Create Quiz</button>
+                <a href="/join.html" target="_blank" class="button">Join Quiz</a>
+            </nav>
+        </header>
+
+        <!-- Quiz List Section -->
+        <div id="quizList" class="section">
+            <div class="quiz-filters">
+                <div class="search-bar">
+                    <input type="text" id="searchInput" placeholder="Search quizzes...">
+                </div>
+            </div>
+            <div id="quizzesContainer"></div>
+        </div>
+
+        <!-- Create Quiz Form -->
+        <div id="quizForm" class="section" style="display: none;">
+            <h2>Create New Quiz</h2>
+            <form id="createQuizForm">
+                <div class="form-group">
+                    <label>Title:</label>
+                    <input type="text" id="quizTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Description:</label>
+                    <textarea id="quizDescription" required></textarea>
+                </div>
+                <div class="form-group theme-settings">
+                    <h3>Theme Settings</h3>
+                    <div class="color-pickers">
+                        <div>
+                            <label>Background Color:</label>
+                            <input type="color" id="backgroundColor" value="#ffffff">
+                        </div>
+                        <div>
+                            <label>Text Color:</label>
+                            <input type="color" id="textColor" value="#333333">
+                        </div>
+                        <div>
+                            <label>Accent Color:</label>
+                            <input type="color" id="accentColor" value="#007bff">
+                        </div>
+                    </div>
+                </div>
+                <div id="questionsContainer"></div>
+                <button type="button" onclick="addQuestion()">Add Question</button>
+                <button type="submit">Create Quiz</button>
+            </form>
+        </div>
+
+        <!-- Live Quiz Control Section -->
+        <div id="liveQuizControl" class="section" style="display: none;">
+            <h2>Live Quiz Control</h2>
+            <div id="sessionInfo">
+                <h3>Session Code: <span id="sessionCode"></span></h3>
+                <p>Share this code with participants to join at: <a href="/join.html" target="_blank">/join.html</a></p>
+                <div id="qrCode"></div>
+            </div>
+            <div id="participantCount">
+                <h3>Participants: <span id="participantNumber">0</span></h3>
+                <div id="participantNames" class="participant-names"></div>
+            </div>
+            <div id="questionControl">
+                <h3>Question Progress: <span id="currentQuestionNumber">-</span>/<span id="totalQuestions">-</span></h3>
+                <div id="questionDisplay" class="question-display"></div>
+                <button onclick="nextQuestion()" id="nextQuestionBtn">Start Quiz</button>
+            </div>
+            <div id="liveLeaderboard">
+                <h3>Leaderboard</h3>
+                <div id="liveLeaderboardList"></div>
+            </div>
+            <div class="report-controls">
+                <button onclick="downloadReport()" id="downloadReportBtn" style="display: none;">Download Report</button>
+                <button onclick="endQuiz()" id="endQuizBtn" style="display: none;">End Quiz</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Winners Announcement Modal -->
+    <div id="winnersModal" class="modal">
+        <div class="modal-content winners-content">
+            <div class="winners-announcement">
+                <h2>Quiz Champions!</h2>
+                <p id="totalParticipants"></p>
+                <div class="winners-podium">
+                    <div class="winner" id="secondPlace">
+                        <div class="trophy silver">🥈</div>
+                        <h3>2nd Place</h3>
+                        <p class="winner-name"></p>
+                        <p class="winner-score"></p>
+                        <p class="winner-rank"></p>
+                    </div>
+                    <div class="winner" id="firstPlace">
+                        <div class="trophy gold">🏆</div>
+                        <h3>1st Place</h3>
+                        <p class="winner-name"></p>
+                        <p class="winner-score"></p>
+                        <p class="winner-rank"></p>
+                    </div>
+                    <div class="winner" id="thirdPlace">
+                        <div class="trophy bronze">🥉</div>
+                        <h3>3rd Place</h3>
+                        <p class="winner-name"></p>
+                        <p class="winner-score"></p>
+                        <p class="winner-rank"></p>
+                    </div>
+                </div>
+                <div id="fullLeaderboard"></div>
+                <div class="winners-actions">
+                    <button onclick="downloadReport()" class="download-report">Download Results</button>
+                    <button onclick="closeWinnersModal()" class="close-winners">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quiz Preview Modal -->
+    <div id="quizPreviewModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeQuizPreview()">&times;</span>
+            <div class="quiz-preview">
+                <div class="quiz-preview-header">
+                    <h2 id="previewTitle"></h2>
+                    <div class="quiz-meta">
+                        <span id="previewQuestionCount"></span>
+                    </div>
+                    <p id="previewDescription"></p>
+                </div>
+                <div class="quiz-questions" id="previewQuestions"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

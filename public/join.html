@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Quiz</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Join Live Quiz</h1>
+        </header>
+
+        <!-- Join Quiz Form -->
+        <div class="section">
+            <form id="joinForm">
+                <div class="form-group">
+                    <label>Session Code:</label>
+                    <input type="text" id="sessionCode" required placeholder="Enter 6-digit code">
+                </div>
+                <div class="form-group">
+                    <label>Your Name:</label>
+                    <input type="text" id="participantName" required placeholder="Enter your name">
+                </div>
+                <button type="submit">Join Quiz</button>
+            </form>
+        </div>
+
+        <!-- Quiz Section (Initially Hidden) -->
+        <div id="quizSection" class="section" style="display: none;">
+            <div class="quiz-layout">
+                <div class="quiz-main">
+                    <div id="waitingMessage">
+                        Waiting for quiz to start...
+                    </div>
+                    <div id="questionContainer" style="display: none;">
+                        <h2 id="questionText"></h2>
+                        <div id="timer"></div>
+                        <div id="options"></div>
+                    </div>
+                </div>
+                <div class="quiz-sidebar">
+                    <div id="leaderboard">
+                        <h3>Leaderboard</h3>
+                        <div id="leaderboardList"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .quiz-layout {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .quiz-main {
+                flex: 1;
+            }
+            
+            /* Score display */
+            #myScore {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.95);
+                padding: 15px;
+                text-align: center;
+                box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+                z-index: 1000;
+                font-size: 1.2em;
+                font-weight: bold;
+                color: #007bff;
+            }
+
+            /* Hide leaderboard */
+            .quiz-sidebar {
+                display: none;
+            }
+
+            /* Multiple choice styles */
+            .multiple-choice-hint {
+                color: #666;
+                font-style: italic;
+                margin: 10px 0;
+            }
+
+            #options button {
+                position: relative;
+                width: 100%;
+                margin: 8px 0;
+                padding: 12px;
+                border: 2px solid #ddd;
+                border-radius: 6px;
+                background: #fff;
+                cursor: pointer;
+                transition: all 0.3s ease;
+            }
+
+            #options button.selected {
+                border-color: #007bff;
+                background-color: #e7f1ff;
+            }
+
+            #options button:disabled {
+                cursor: not-allowed;
+                opacity: 0.7;
+            }
+
+            /* Submit button for multiple choice */
+            .submit-button {
+                display: block;
+                width: 100%;
+                margin: 20px 0;
+                padding: 15px;
+                background: linear-gradient(45deg, #2979FF, #2962FF);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 1.1em;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                transition: all 0.3s ease;
+            }
+
+            .submit-button:hover:not(:disabled) {
+                background: linear-gradient(45deg, #2962FF, #1565C0);
+                box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+                transform: translateY(-1px);
+            }
+
+            .submit-button:disabled {
+                background: linear-gradient(45deg, #ccc, #999);
+                cursor: not-allowed;
+                box-shadow: none;
+                opacity: 0.7;
+            }
+
+            /* Answer feedback styles */
+            @keyframes correctAnswer {
+                0% { background-color: #ffffff; }
+                50% { background-color: #4CAF50; }
+                100% { background-color: #e8f5e9; }
+            }
+
+            @keyframes wrongAnswer {
+                0% { background-color: #ffffff; }
+                50% { background-color: #ff4444; }
+                100% { background-color: #ffebee; }
+            }
+
+            @keyframes missedAnswer {
+                0% { background-color: #ffffff; }
+                50% { background-color: #ffc107; }
+                100% { background-color: #fff3e0; }
+            }
+
+            .correct-answer {
+                animation: correctAnswer 1s ease forwards;
+                border-color: #4CAF50 !important;
+            }
+
+            .wrong-answer {
+                animation: wrongAnswer 1s ease forwards;
+                border-color: #ff4444 !important;
+            }
+
+            .missed-answer {
+                animation: missedAnswer 1s ease forwards;
+                border-color: #ffc107 !important;
+            }
+
+            /* Partial credit feedback */
+            .partial-credit {
+                margin: 15px 0;
+                padding: 10px;
+                background-color: #fff3e0;
+                border: 1px solid #ffc107;
+                border-radius: 4px;
+                text-align: center;
+                color: #f57c00;
+            }
+
+            /* Question counter */
+            #questionCounter {
+                font-size: 1.2em;
+                color: #666;
+                margin-bottom: 15px;
+            }
+
+            /* Mobile styles */
+            @media (max-width: 768px) {
+                .quiz-layout {
+                    flex-direction: column;
+                }
+                .quiz-sidebar {
+                    display: none;
+                }
+                #myScore {
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    background: rgba(255, 255, 255, 0.95);
+                    padding: 10px;
+                    text-align: center;
+                    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+                    z-index: 1000;
+                }
+            }
+        </style>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        #connectionStatus {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        .connected {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+        .reconnecting {
+            background-color: #ff9800;
+            color: white;
+        }
+        .error-message {
+            color: #f44336;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #f44336;
+            border-radius: 4px;
+            display: none;
+        }
+    </style>
+    <script>
+        const socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
+        });
+        let sessionId = null;
+        let currentQuestion = -1;
+        let hasAnswered = false;
+        let isConnected = false;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+
+        // Add connection status indicator
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'connectionStatus';
+        document.body.appendChild(statusDiv);
+
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        document.querySelector('.container').insertBefore(errorDiv, document.querySelector('.section'));
+
+        function updateConnectionStatus(status, message = '') {
+            const statusDiv = document.getElementById('connectionStatus');
+            const errorDiv = document.querySelector('.error-message');
+            
+            if (statusDiv) {
+                statusDiv.textContent = status;
+                statusDiv.className = status.toLowerCase();
+                
+                if (message && status === 'Disconnected') {
+                    errorDiv.textContent = message;
+                    errorDiv.style.display = 'block';
+                } else {
+                    errorDiv.style.display = 'none';
+                }
+            }
+        }
+
+        // Enhanced reconnection handling
+        async function attemptReconnect() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                console.log('Max reconnection attempts reached');
+                updateConnectionStatus('Disconnected', 'Unable to reconnect after multiple attempts. Please refresh the page.');
+                return;
+            }
+
+            updateConnectionStatus('Reconnecting', `Attempt ${reconnectAttempts + 1}/${maxReconnectAttempts}`);
+
+            try {
+                const response = await fetch('/api/live/reconnect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ sessionId })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    console.log('Successfully reconnected to quiz');
+                    reconnectAttempts = 0;
+                    socket.emit('join-quiz', { sessionId });
+                }
+            } catch (error) {
+                console.error('Error reconnecting:', error);
+                reconnectAttempts++;
+                // Exponential backoff
+                setTimeout(attemptReconnect, Math.min(1000 * Math.pow(2, reconnectAttempts), 10000));
+            }
+        }
+
+        document.getElementById('joinForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const sessionCode = document.getElementById('sessionCode').value.toUpperCase();
+            const name = document.getElementById('participantName').value;
+
+            try {
+                const response = await fetch('/api/live/join', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ sessionCode, name })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    sessionId = data.data.sessionId;
+                    document.getElementById('joinForm').style.display = 'none';
+                    document.getElementById('quizSection').style.display = 'block';
+                    socket.emit('join-quiz', { sessionId: data.data.sessionId });
+                    console.log('Joining quiz with session ID:', data.data.sessionId);
+                } else {
+                    alert('Failed to join quiz: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error joining quiz');
+                console.error(error);
+            }
+        });
+
+        socket.on('quiz-joined', (data) => {
+            console.log('Quiz joined event received:', data);
+            currentQuestion = data.currentQuestion;
+            if (currentQuestion >= 0) {
+                showQuestion(data);
+            }
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket connected');
+            isConnected = true;
+            updateConnectionStatus('Connected');
+            if (sessionId) {
+                attemptReconnect();
+            }
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            updateConnectionStatus('Disconnected', `Connection error: ${error.message}`);
+        });
+
+        socket.on('connect_timeout', () => {
+            console.error('Connection timeout');
+            updateConnectionStatus('Disconnected', 'Connection timeout. Please check your internet connection.');
+        });
+
+        socket.on('disconnect', async () => {
+            console.log('Socket disconnected');
+            isConnected = false;
+            updateConnectionStatus('Disconnected', 'Connection lost. Attempting to reconnect...');
+
+            // Notify server about disconnection
+            if (sessionId) {
+                try {
+                    await fetch('/api/live/disconnect', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ sessionId })
+                    });
+                } catch (error) {
+                    console.error('Error notifying server about disconnection:', error);
+                }
+            }
+
+            // Show disconnection message and hide question
+            const waitingMessage = document.getElementById('waitingMessage');
+            waitingMessage.textContent = 'Connection lost. Attempting to reconnect...';
+            waitingMessage.style.display = 'block';
+            document.getElementById('questionContainer').style.display = 'none';
+
+            // Attempt to reconnect with exponential backoff
+            if (sessionId) {
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+                setTimeout(attemptReconnect, delay);
+            }
+        });
+
+        socket.on('quiz-reconnected', (data) => {
+            currentQuestion = data.currentQuestion;
+            if (currentQuestion >= 0) {
+                showQuestion(data);
+            }
+        });
+
+        let myScore = 0;
+        let totalQuestions = 0;
+
+        socket.on('new-question', (data) => {
+            console.log('New question received:', data);
+            hasAnswered = false;
+            if (data && data.question) {
+                totalQuestions = data.totalQuestions || data.question.totalQuestions;
+                // Clear any existing answer feedback
+                const options = document.getElementById('options');
+                if (options) {
+                    const feedback = options.querySelector('.partial-credit');
+                    if (feedback) {
+                        feedback.remove();
+                    }
+                }
+                showQuestion(data);
+            } else {
+                console.error('Invalid question data received:', data);
+            }
+        });
+
+        socket.on('join-quiz', (data) => {
+            console.log('Joined quiz:', data);
+            if (data.currentQuestion >= 0) {
+                showQuestion(data);
+            }
+        });
+
+        // Add debug events
+        socket.on('connect', () => {
+            console.log('Socket connected, ID:', socket.id);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Socket disconnected');
+            document.getElementById('waitingMessage').style.display = 'block';
+            document.getElementById('questionContainer').style.display = 'none';
+        });
+
+        socket.on('error', (error) => {
+            console.error('Socket error:', error);
+            alert('Connection error: ' + error);
+        });
+
+        socket.on('leaderboard-update', (leaderboard) => {
+            const leaderboardDiv = document.getElementById('leaderboard');
+            const leaderboardList = document.getElementById('leaderboardList');
+            const participantName = document.getElementById('participantName').value;
+            
+            // Update my score and rank
+            const myEntry = leaderboard.find(entry => entry.name === participantName);
+            if (myEntry) {
+                myScore = myEntry.score;
+                const myRank = leaderboard.findIndex(entry => entry.name === participantName) + 1;
+                // Create or update my score display
+                let myScoreDiv = document.getElementById('myScore');
+                if (!myScoreDiv) {
+                    myScoreDiv = document.createElement('div');
+                    myScoreDiv.id = 'myScore';
+                    document.body.appendChild(myScoreDiv);
+                }
+                myScoreDiv.innerHTML = `Your Score: ${myScore} (Rank: ${myRank}/${leaderboard.length})`;
+            }
+
+            // Update full leaderboard
+            leaderboardDiv.style.display = 'block';
+            leaderboardList.innerHTML = leaderboard
+                .map((entry, index) => `
+                    <div class="leaderboard-entry">
+                        <span class="rank">${index + 1}</span>
+                        <span class="name">${entry.name}</span>
+                        <span class="score">${entry.score}</span>
+                    </div>
+                `)
+                .join('');
+        });
+
+        socket.on('quiz-ended', () => {
+            document.getElementById('questionContainer').style.display = 'none';
+            document.getElementById('waitingMessage').textContent = 'Quiz has ended';
+            document.getElementById('waitingMessage').style.display = 'block';
+        });
+
+        socket.on('error', (message) => {
+            alert('Error: ' + message);
+        });
+
+        function showQuestion(data) {
+            try {
+                console.log('Showing question:', data);
+                const waitingMessage = document.getElementById('waitingMessage');
+                const questionContainer = document.getElementById('questionContainer');
+                const questionText = document.getElementById('questionText');
+                const options = document.getElementById('options');
+                const timer = document.getElementById('timer');
+
+                if (!data.question || !data.question.questionText || !data.question.options) {
+                    console.error('Invalid question format:', data);
+                    return;
+                }
+
+                waitingMessage.style.display = 'none';
+                questionContainer.style.display = 'block';
+                
+                // Count correct options to determine if it's multiple choice
+                const correctCount = data.question.options.filter(opt => opt.isCorrect).length;
+                const isMultipleChoice = correctCount > 1;
+                
+                // Add question counter and multiple choice hint if applicable
+                const currentQuestionNum = data.currentQuestion + 1;
+                questionText.innerHTML = `
+                    <div id="questionCounter">Question ${currentQuestionNum}/${totalQuestions}</div>
+                    ${data.question.questionText}
+                    ${isMultipleChoice ? '<div class="multiple-choice-hint">(Select all that apply)</div>' : ''}
+                `;
+                options.innerHTML = '';
+                options.dataset.multiple = isMultipleChoice;
+
+                // Create submit button for multiple choice questions
+                let submitButton;
+                if (isMultipleChoice) {
+                    submitButton = document.createElement('button');
+                    submitButton.id = 'submitAnswers';
+                    submitButton.textContent = 'Submit Answers';
+                    submitButton.className = 'submit-button';
+                    submitButton.disabled = true;
+                }
+
+                const selectedAnswers = new Set();
+
+                data.question.options.forEach((option, index) => {
+                    const button = document.createElement('button');
+                    button.textContent = option.text;
+                    button.dataset.index = index;
+                    button.disabled = hasAnswered;
+                    
+                    button.addEventListener('click', function() {
+                        if (hasAnswered) return;
+                        
+                        if (isMultipleChoice) {
+                            this.classList.toggle('selected');
+                            if (this.classList.contains('selected')) {
+                                selectedAnswers.add(index);
+                            } else {
+                                selectedAnswers.delete(index);
+                            }
+                            if (submitButton) {
+                                submitButton.disabled = selectedAnswers.size === 0;
+                            }
+                        } else {
+                            submitAnswer([index]);
+                        }
+                    });
+                    
+                    options.appendChild(button);
+                });
+
+                if (isMultipleChoice) {
+                    submitButton.addEventListener('click', function() {
+                        if (!hasAnswered && selectedAnswers.size > 0) {
+                            submitAnswer(Array.from(selectedAnswers));
+                        }
+                    });
+                    options.appendChild(submitButton);
+                }
+
+                // Log the setup for debugging
+                console.log('Question setup:', {
+                    isMultipleChoice,
+                    correctCount,
+                    totalOptions: data.question.options.length,
+                    hasSubmitButton: !!submitButton
+                });
+
+                // Start timer
+                let timeLeft = data.timeLimit;
+                timer.textContent = `Time left: ${timeLeft}s`;
+                
+                const timerInterval = setInterval(() => {
+                    timeLeft--;
+                    timer.textContent = `Time left: ${timeLeft}s`;
+                    
+                    if (timeLeft <= 0 || hasAnswered) {
+                        clearInterval(timerInterval);
+                        options.querySelectorAll('button').forEach(btn => btn.disabled = true);
+                    }
+                }, 1000);
+            } catch (error) {
+                console.error('Error showing question:', error);
+                document.getElementById('waitingMessage').style.display = 'block';
+                document.getElementById('questionContainer').style.display = 'none';
+            }
+        }
+
+        async function submitAnswer(answers) {
+            if (hasAnswered) return;
+            
+            try {
+                const response = await fetch('/api/live/answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId,
+                        answers: answers
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    hasAnswered = true;
+                    const buttons = document.querySelectorAll('#options button:not(#submitAnswers)');
+                    const submitButton = document.getElementById('submitAnswers');
+                    if (submitButton) submitButton.disabled = true;
+                    
+                    buttons.forEach(btn => {
+                        btn.disabled = true;
+                        const index = parseInt(btn.dataset.index);
+                        
+                        // Show which answers were correct
+                        if (data.data.correctAnswers.includes(index)) {
+                            if (answers.includes(index)) {
+                                btn.classList.add('correct-answer');
+                            } else {
+                                btn.classList.add('missed-answer');
+                            }
+                        } else if (answers.includes(index)) {
+                            btn.classList.add('wrong-answer');
+                        }
+                    });
+
+                    // Show partial credit if applicable
+                    if (data.data.correctnessRatio < 1 && data.data.correctnessRatio > 0) {
+                        const feedback = document.createElement('div');
+                        feedback.className = 'partial-credit';
+                        feedback.textContent = `Partial credit: ${Math.round(data.data.correctnessRatio * 100)}%`;
+                        document.getElementById('options').appendChild(feedback);
+                    }
+                }
+            } catch (error) {
+                console.error('Error submitting answer:', error);
+            }
+        }
+
+    </script>
+</body>
+</html>
