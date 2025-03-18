@@ -437,10 +437,8 @@ async function loadQuizzes() {
     }
 }
 
-// Existing quiz creation code (already updated in previous version)
-document.getElementById('createQuizForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
+// Function to get quiz data from form
+function getQuizDataFromForm() {
     const quiz = {
         title: document.getElementById('quizTitle').value,
         description: document.getElementById('quizDescription').value,
@@ -452,51 +450,55 @@ document.getElementById('createQuizForm').addEventListener('submit', async (e) =
         questions: []
     };
 
-    // Validate title
-    if (!quiz.title.trim()) {
-        alert('Quiz title is required');
-        return;
-    }
-
     // Get questions
     const questionContainers = document.querySelectorAll('.question-container');
     
     if (questionContainers.length === 0) {
         alert('Please add at least one question to the quiz');
-        return;
+        return null;
     }
 
-    questionContainers.forEach(questionContainer => {
+    // Validate all questions before proceeding
+    let isValid = true;
+    questionContainers.forEach((questionContainer, questionIndex) => {
         const questionText = questionContainer.querySelector('.question-text').value.trim();
         
         if (!questionText) {
-            alert('Each question must have a question text');
+            alert(`Question ${questionIndex + 1}: Question text is required`);
+            isValid = false;
             return;
         }
 
-        const timeLimit = parseInt(questionContainer.querySelector('.time-limit').value);
-        const options = [];
-        
         const optionContainers = questionContainer.querySelectorAll('.option');
         const checkedOptions = Array.from(optionContainers).filter(option => 
             option.querySelector('.correct-option').checked
         );
 
         if (checkedOptions.length === 0) {
-            alert('Each question must have at least one correct option');
+            alert(`Question ${questionIndex + 1}: Please select at least one correct option`);
+            isValid = false;
             return;
         }
 
-        optionContainers.forEach(option => {
+        let hasEmptyOption = false;
+        optionContainers.forEach((option, optionIndex) => {
             const optionText = option.querySelector('input[type="text"]').value.trim();
-            
             if (!optionText) {
-                alert('Option text cannot be empty');
+                alert(`Question ${questionIndex + 1}, Option ${optionIndex + 1}: Option text cannot be empty`);
+                hasEmptyOption = true;
+                isValid = false;
                 return;
             }
+        });
 
+        if (!isValid || hasEmptyOption) return;
+
+        const timeLimit = parseInt(questionContainer.querySelector('.time-limit').value);
+        const options = [];
+
+        optionContainers.forEach(option => {
             options.push({
-                text: optionText,
+                text: option.querySelector('input[type="text"]').value.trim(),
                 isCorrect: option.querySelector('.correct-option').checked
             });
         });
@@ -512,11 +514,34 @@ document.getElementById('createQuizForm').addEventListener('submit', async (e) =
         });
     });
 
+    return isValid ? quiz : null;
+}
+
+// Handle form submission for both create and update
+document.getElementById('createQuizForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const quiz = getQuizDataFromForm();
+    if (!quiz) return; // Validation failed
+
+    const form = e.target;
+    const editQuizId = form.dataset.editQuizId;
+
     try {
-        console.log('Sending quiz creation request with payload:', JSON.stringify(quiz, null, 2));
+        let url = '/api/quiz';
+        let method = 'POST';
+        let successMessage = 'Quiz created successfully!';
+
+        if (editQuizId) {
+            url = `/api/quiz/${editQuizId}`;
+            method = 'PUT';
+            successMessage = 'Quiz updated successfully!';
+        }
+
+        console.log(`${editQuizId ? 'Updating' : 'Creating'} quiz with payload:`, JSON.stringify(quiz, null, 2));
         
-        const response = await fetch('/api/quiz', {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -525,23 +550,170 @@ document.getElementById('createQuizForm').addEventListener('submit', async (e) =
 
         const responseData = await response.json();
 
-        if (response.ok) {
-            console.log('Quiz created successfully:', responseData);
-            alert('Quiz created successfully!');
-            document.getElementById('createQuizForm').reset();
-            document.getElementById('questionsContainer').innerHTML = ''; // Clear questions
+        if (responseData.success) {
+            console.log(`Quiz ${editQuizId ? 'updated' : 'created'} successfully:`, responseData);
+            alert(successMessage);
+            
+            // Reset form
+            form.reset();
+            document.getElementById('questionsContainer').innerHTML = '';
+            
+            // Reset form state if we were editing
+            if (editQuizId) {
+                delete form.dataset.editQuizId;
+                document.querySelector('#createQuizForm button[type="submit"]').textContent = 'Create Quiz';
+            }
+            
             showQuizzes();
         } else {
-            console.error('Quiz creation failed:', responseData);
-            alert(`Error creating quiz: ${responseData.error || 'Unknown error'}`);
+            console.error(`Quiz ${editQuizId ? 'update' : 'creation'} failed:`, responseData);
+            alert(`Error: ${responseData.error || 'Unknown error'}`);
         }
     } catch (error) {
-        console.error('Error creating quiz:', error);
-        alert('Error creating quiz. Please check the console for details.');
+        console.error(`Error ${editQuizId ? 'updating' : 'creating'} quiz:`, error);
+        alert(`Error ${editQuizId ? 'updating' : 'creating'} quiz. Please check the console for details.`);
     }
 });
 
-// Update other functions to use '/api/quizzes'
+// Theme application
+function applyTheme(theme) {
+    const root = document.documentElement;
+    root.style.setProperty('--background-color', theme.backgroundColor || '#ffffff');
+    root.style.setProperty('--text-color', theme.textColor || '#333333');
+    root.style.setProperty('--accent-color', theme.accentColor || '#007bff');
+}
+
+async function editQuiz(id) {
+    try {
+        const quiz = allQuizzes.find(q => q.id === id);
+        if (!quiz) {
+            alert('Quiz not found');
+            return;
+        }
+
+        // Clear existing form data
+        document.getElementById('createQuizForm').reset();
+        document.getElementById('questionsContainer').innerHTML = '';
+
+        // Show quiz form and add cancel button
+        document.getElementById('quizList').style.display = 'none';
+        document.getElementById('quizForm').style.display = 'block';
+        document.getElementById('liveQuizControl').style.display = 'none';
+
+        // Add cancel button if not already present
+        let cancelBtn = document.querySelector('.cancel-edit-btn');
+        if (!cancelBtn) {
+            // Create a container for the buttons at the bottom
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'form-buttons';
+            buttonContainer.style.display = 'flex';
+            buttonContainer.style.gap = '10px';
+            buttonContainer.style.justifyContent = 'flex-end';
+            buttonContainer.style.marginTop = '20px';
+
+            // Move the submit button to the container and style it to match other buttons
+            const submitButton = document.querySelector('#createQuizForm button[type="submit"]');
+            submitButton.style.padding = '8px 16px';
+            submitButton.style.fontSize = '14px';
+            submitButton.style.minWidth = '100px';
+            submitButton.style.border = 'none';
+            submitButton.style.borderRadius = '4px';
+            submitButton.style.backgroundColor = '#FFA000'; // Amber color
+            submitButton.style.color = '#ffffff';
+            submitButton.style.cursor = 'pointer';
+            submitButton.style.height = '32px';
+            submitButton.style.boxSizing = 'border-box';
+            submitButton.style.opacity = '1';
+            buttonContainer.appendChild(submitButton);
+
+            // Create and add the cancel button
+            cancelBtn = document.createElement('button');
+            cancelBtn.className = 'cancel-edit-btn';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.type = 'button';  // Prevent form submission
+            cancelBtn.style.padding = '8px 16px';
+            cancelBtn.style.fontSize = '14px';
+            cancelBtn.style.minWidth = '100px';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.borderRadius = '4px';
+            cancelBtn.style.backgroundColor = '#1976D2'; // Blue color
+            cancelBtn.style.color = '#ffffff';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.style.height = '32px';
+            cancelBtn.style.boxSizing = 'border-box';
+            cancelBtn.style.opacity = '1';
+            cancelBtn.onclick = () => {
+                document.getElementById('createQuizForm').reset();
+                document.getElementById('questionsContainer').innerHTML = '';
+                showQuizzes();
+            };
+            buttonContainer.insertBefore(cancelBtn, submitButton);
+
+            // Add the button container to the form
+            document.getElementById('createQuizForm').appendChild(buttonContainer);
+        }
+
+        // Fill form with quiz data
+        document.getElementById('quizTitle').value = quiz.title;
+        document.getElementById('quizDescription').value = quiz.description;
+        document.getElementById('backgroundColor').value = quiz.theme?.backgroundColor || '#ffffff';
+        document.getElementById('textColor').value = quiz.theme?.textColor || '#333333';
+        document.getElementById('accentColor').value = quiz.theme?.accentColor || '#007bff';
+
+        // Add questions
+        quiz.questions.forEach(question => {
+            const questionsContainer = document.getElementById('questionsContainer');
+            const questionNumber = questionsContainer.children.length + 1;
+
+            const questionHTML = `
+                <div class="question-container">
+                    <h3>Question ${questionNumber}</h3>
+                    <div class="form-group">
+                        <label>Question Text:</label>
+                        <input type="text" class="question-text" value="${question.questionText}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Time Limit (seconds):</label>
+                        <input type="number" class="time-limit" value="${question.timeLimit}" min="5" max="300" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Image (optional):</label>
+                        <input type="file" class="question-image" accept="image/*" onchange="previewImage(this)">
+                        <div class="image-preview">
+                            ${question.imageUrl ? `<img src="${question.imageUrl}" alt="Question image">` : ''}
+                        </div>
+                    </div>
+                    <div class="options-container">
+                        <h4>Options</h4>
+                        ${question.options.map((option, index) => `
+                            <div class="option">
+                                <input type="text" placeholder="Option ${index + 1}" value="${option.text}" required>
+                                <label>
+                                    <input type="checkbox" class="correct-option" ${option.isCorrect ? 'checked' : ''}> Correct
+                                </label>
+                                ${index > 1 ? '<button type="button" onclick="removeOption(this)">Remove</button>' : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button type="button" onclick="addOption(this)">Add Option</button>
+                    <button type="button" class="remove-question" onclick="removeQuestion(this)">Remove Question</button>
+                </div>
+            `;
+            questionsContainer.insertAdjacentHTML('beforeend', questionHTML);
+        });
+
+        // Store the quiz ID being edited
+        document.getElementById('createQuizForm').dataset.editQuizId = id;
+
+        // Update submit button text
+        const submitButton = document.querySelector('#createQuizForm button[type="submit"]');
+        submitButton.textContent = 'Save Changes';
+    } catch (error) {
+        console.error('Error editing quiz:', error);
+        alert('Error editing quiz. Please check the console for details.');
+    }
+}
+
 async function startLiveQuiz(id) {
     try {
         const response = await fetch(`/api/live/start/${id}`, {
@@ -706,211 +878,6 @@ async function downloadReport() {
     } catch (error) {
         console.error('Error downloading report:', error);
         alert('Error downloading report. Please check the console for details.');
-    }
-}
-
-// Theme application
-function applyTheme(theme) {
-    const root = document.documentElement;
-    root.style.setProperty('--background-color', theme.backgroundColor || '#ffffff');
-    root.style.setProperty('--text-color', theme.textColor || '#333333');
-    root.style.setProperty('--accent-color', theme.accentColor || '#007bff');
-}
-
-async function editQuiz(id) {
-    try {
-        const quiz = allQuizzes.find(q => q.id === id);
-        if (!quiz) {
-            alert('Quiz not found');
-            return;
-        }
-
-        // Clear existing form data
-        document.getElementById('createQuizForm').reset();
-        document.getElementById('questionsContainer').innerHTML = '';
-
-        // Show quiz form and add cancel button
-        document.getElementById('quizList').style.display = 'none';
-        document.getElementById('quizForm').style.display = 'block';
-        document.getElementById('liveQuizControl').style.display = 'none';
-
-        // Add cancel button if not already present
-        let cancelBtn = document.querySelector('.cancel-edit-btn');
-        if (!cancelBtn) {
-            cancelBtn = document.createElement('button');
-            cancelBtn.className = 'cancel-edit-btn';
-            cancelBtn.textContent = 'Cancel';
-            cancelBtn.onclick = () => {
-                document.getElementById('createQuizForm').reset();
-                document.getElementById('questionsContainer').innerHTML = '';
-                showQuizzes();
-            };
-            document.getElementById('createQuizForm').insertBefore(cancelBtn, document.getElementById('createQuizForm').firstChild);
-        }
-
-        // Fill form with quiz data
-        document.getElementById('quizTitle').value = quiz.title;
-        document.getElementById('quizDescription').value = quiz.description;
-        document.getElementById('backgroundColor').value = quiz.theme?.backgroundColor || '#ffffff';
-        document.getElementById('textColor').value = quiz.theme?.textColor || '#333333';
-        document.getElementById('accentColor').value = quiz.theme?.accentColor || '#007bff';
-
-        // Add questions
-        quiz.questions.forEach(question => {
-            const questionsContainer = document.getElementById('questionsContainer');
-            const questionNumber = questionsContainer.children.length + 1;
-
-            const questionHTML = `
-                <div class="question-container">
-                    <h3>Question ${questionNumber}</h3>
-                    <div class="form-group">
-                        <label>Question Text:</label>
-                        <input type="text" class="question-text" value="${question.questionText}" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Time Limit (seconds):</label>
-                        <input type="number" class="time-limit" value="${question.timeLimit}" min="5" max="300" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Image (optional):</label>
-                        <input type="file" class="question-image" accept="image/*" onchange="previewImage(this)">
-                        <div class="image-preview">
-                            ${question.imageUrl ? `<img src="${question.imageUrl}" alt="Question image">` : ''}
-                        </div>
-                    </div>
-                    <div class="options-container">
-                        <h4>Options</h4>
-                        ${question.options.map((option, index) => `
-                            <div class="option">
-                                <input type="text" placeholder="Option ${index + 1}" value="${option.text}" required>
-                                <label>
-                                    <input type="checkbox" class="correct-option" ${option.isCorrect ? 'checked' : ''}> Correct
-                                </label>
-                                ${index > 1 ? '<button type="button" onclick="removeOption(this)">Remove</button>' : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                    <button type="button" onclick="addOption(this)">Add Option</button>
-                    <button type="button" class="remove-question" onclick="removeQuestion(this)">Remove Question</button>
-                </div>
-            `;
-            questionsContainer.insertAdjacentHTML('beforeend', questionHTML);
-        });
-
-        // Store the quiz ID being edited
-        document.getElementById('createQuizForm').dataset.editQuizId = id;
-
-        // Update form submission to handle edit
-        const form = document.getElementById('createQuizForm');
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const editQuizId = form.dataset.editQuizId;
-            if (editQuizId) {
-                await updateQuiz(editQuizId);
-            } else {
-                await createQuiz(e);
-            }
-        };
-    } catch (error) {
-        console.error('Error editing quiz:', error);
-        alert('Error editing quiz. Please check the console for details.');
-    }
-}
-
-async function updateQuiz(id) {
-    const quiz = {
-        title: document.getElementById('quizTitle').value,
-        description: document.getElementById('quizDescription').value,
-        theme: {
-            backgroundColor: document.getElementById('backgroundColor').value,
-            textColor: document.getElementById('textColor').value,
-            accentColor: document.getElementById('accentColor').value
-        },
-        questions: []
-    };
-
-    // Get questions (reusing existing validation logic)
-    const questionContainers = document.querySelectorAll('.question-container');
-    
-    if (questionContainers.length === 0) {
-        alert('Please add at least one question to the quiz');
-        return;
-    }
-
-    questionContainers.forEach(questionContainer => {
-        const questionText = questionContainer.querySelector('.question-text').value.trim();
-        
-        if (!questionText) {
-            alert('Each question must have a question text');
-            return;
-        }
-
-        const timeLimit = parseInt(questionContainer.querySelector('.time-limit').value);
-        const options = [];
-        
-        const optionContainers = questionContainer.querySelectorAll('.option');
-        const checkedOptions = Array.from(optionContainers).filter(option => 
-            option.querySelector('.correct-option').checked
-        );
-
-        if (checkedOptions.length === 0) {
-            alert('Each question must have at least one correct option');
-            return;
-        }
-
-        optionContainers.forEach(option => {
-            const optionText = option.querySelector('input[type="text"]').value.trim();
-            
-            if (!optionText) {
-                alert('Option text cannot be empty');
-                return;
-            }
-
-            options.push({
-                text: optionText,
-                isCorrect: option.querySelector('.correct-option').checked
-            });
-        });
-
-        const imagePreview = questionContainer.querySelector('.image-preview img');
-        const imageUrl = imagePreview ? imagePreview.src : null;
-
-        quiz.questions.push({
-            questionText,
-            timeLimit,
-            options,
-            imageUrl
-        });
-    });
-
-    try {
-        const response = await fetch(`/api/quiz/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(quiz)
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            alert('Quiz updated successfully!');
-            document.getElementById('createQuizForm').reset();
-            document.getElementById('questionsContainer').innerHTML = '';
-            // Reset form submission handler
-            document.getElementById('createQuizForm').onsubmit = async (e) => {
-                e.preventDefault();
-                await createQuiz(e);
-            };
-            showQuizzes();
-        } else {
-            console.error('Quiz update failed:', data);
-            alert(`Error updating quiz: ${data.error || 'Unknown error'}`);
-        }
-    } catch (error) {
-        console.error('Error updating quiz:', error);
-        alert('Error updating quiz. Please check the console for details.');
     }
 }
 

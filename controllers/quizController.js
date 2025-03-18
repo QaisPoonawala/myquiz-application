@@ -159,13 +159,21 @@ exports.getQuiz = async (req, res) => {
 // Update quiz
 exports.updateQuiz = async (req, res) => {
     try {
+        console.log('Updating quiz:', req.params.id);
+        console.log('Update data:', JSON.stringify(req.body, null, 2));
+
+        // Update the quiz
         const quiz = await Quiz.findByIdAndUpdate(req.params.id, req.body);
+        
         if (!quiz) {
+            console.error('Quiz not found:', req.params.id);
             return res.status(404).json({
                 success: false,
                 error: 'Quiz not found'
             });
         }
+
+        console.log('Quiz updated successfully:', JSON.stringify(quiz, null, 2));
         res.status(200).json({
             success: true,
             data: quiz

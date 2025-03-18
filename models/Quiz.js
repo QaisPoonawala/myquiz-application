@@ -96,18 +96,31 @@ class Quiz {
 
     static async findByIdAndUpdate(id, updateData) {
         try {
+            // First check if item exists
+            const existingItem = await this.findById(id);
+            if (!existingItem) {
+                return null;
+            }
+
             // Build update expression and attribute values
             const updateAttrs = {};
             const updateNames = {};
             const updateExpressions = [];
 
             Object.entries(updateData).forEach(([key, value]) => {
-                const attrName = `#${key}`;
-                const attrValue = `:${key}`;
-                updateNames[attrName] = key;
-                updateAttrs[attrValue] = value;
-                updateExpressions.push(`${attrName} = ${attrValue}`);
+                if (value !== undefined) {  // Only update fields that are provided
+                    const attrName = `#${key}`;
+                    const attrValue = `:${key}`;
+                    updateNames[attrName] = key;
+                    updateAttrs[attrValue] = value;
+                    updateExpressions.push(`${attrName} = ${attrValue}`);
+                }
             });
+
+            // If no fields to update, return existing item
+            if (updateExpressions.length === 0) {
+                return existingItem;
+            }
 
             const params = {
                 TableName: this.tableName,
@@ -115,7 +128,9 @@ class Quiz {
                 UpdateExpression: `SET ${updateExpressions.join(', ')}`,
                 ExpressionAttributeNames: updateNames,
                 ExpressionAttributeValues: updateAttrs,
-                ReturnValues: 'ALL_NEW'
+                ReturnValues: 'ALL_NEW',
+                // Add condition to ensure item exists
+                ConditionExpression: 'attribute_exists(id)'
             };
 
             const command = new UpdateCommand(params);
