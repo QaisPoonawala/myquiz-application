@@ -1,0 +1,21 @@
+{
+  "title": "Test Quiz",
+  "description": "A test quiz",
+  "questions": [
+    {
+      "questionText": "What is 2+2?",
+      "timeLimit": 30,
+      "options": [
+        {
+          "text": "4",
+          "isCorrect": 1
+        },
+        {
+          "text": "3",
+          "isCorrect": 0
+        }
+      ],
+      "imageUrl": null
+    }
+  ]
+}
