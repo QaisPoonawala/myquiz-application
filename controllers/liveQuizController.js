@@ -80,17 +80,45 @@ exports.joinQuiz = async (req, res) => {
         // Create participant
         const participantId = uuidv4();
         const sessionId = uuidv4();
-        const participant = {
-            id: participantId,
-            name,
-            sessionId,
-            quizId: quiz.id,
-            score: 0,
-            answers: [],
-            connected: 1,
-            lastActive: new Date().toISOString()
-        };
-        await Participant.create(participant);
+        // Check if a participant with this device ID already exists
+        const existingParticipants = await docClient.send(new ScanCommand({
+            TableName: Participant.tableName,
+            FilterExpression: '#qi = :quizId AND #di = :deviceId',
+            ExpressionAttributeNames: {
+                '#qi': 'quizId',
+                '#di': 'deviceId'
+            },
+            ExpressionAttributeValues: {
+                ':quizId': quiz.id,
+                ':deviceId': req.body.deviceId
+            }
+        }));
+
+        let participant;
+        if (existingParticipants.Items && existingParticipants.Items.length > 0) {
+            // Update existing participant
+            participant = existingParticipants.Items[0];
+            await Participant.update(participant.id, {
+                connected: 1,
+                lastActive: new Date().toISOString(),
+                sessionId: sessionId,
+                socketId: req.body.socketId
+            });
+        } else {
+            // Create new participant
+            participant = {
+                id: participantId,
+                name,
+                sessionId,
+                quizId: quiz.id,
+                score: 0,
+                answers: [],
+                connected: 1,
+                lastActive: new Date().toISOString(),
+                deviceId: req.body.deviceId
+            };
+            await Participant.create(participant);
+        }
 
         // Update quiz with new participant
         await Quiz.findByIdAndUpdate(quiz.id, {
@@ -258,13 +286,24 @@ exports.submitAnswer = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Answers must be an array' });
         }
         
-        // Find participant by sessionId
-        const participants = await Participant.findBySessionId(sessionId);
+        // Find participant by sessionId and deviceId
+        const participants = await docClient.send(new ScanCommand({
+            TableName: Participant.tableName,
+            FilterExpression: '(#si = :sessionId OR #di = :deviceId)',
+            ExpressionAttributeNames: {
+                '#si': 'sessionId',
+                '#di': 'deviceId'
+            },
+            ExpressionAttributeValues: {
+                ':sessionId': sessionId,
+                ':deviceId': req.body.deviceId
+            }
+        }));
         
-        if (!participants || participants.length === 0) {
+        if (!participants.Items || participants.Items.length === 0) {
             return res.status(404).json({ success: false, error: 'Participant not found' });
         }
-        const participant = participants[0];
+        const participant = participants.Items[0];
 
         // Get quiz
         const quiz = await Quiz.findById(participant.quizId);
@@ -462,12 +501,24 @@ exports.handleDisconnect = async (req, res) => {
     try {
         const { sessionId } = req.body;
         
-        // Find participant by sessionId
-        const participants = await Participant.findBySessionId(sessionId);
-        if (!participants || participants.length === 0) {
+        // Find participant by sessionId and deviceId
+        const participants = await docClient.send(new ScanCommand({
+            TableName: Participant.tableName,
+            FilterExpression: '(#si = :sessionId OR #di = :deviceId)',
+            ExpressionAttributeNames: {
+                '#si': 'sessionId',
+                '#di': 'deviceId'
+            },
+            ExpressionAttributeValues: {
+                ':sessionId': sessionId,
+                ':deviceId': req.body.deviceId
+            }
+        }));
+        
+        if (!participants.Items || participants.Items.length === 0) {
             return res.status(404).json({ success: false, error: 'Participant not found' });
         }
-        const participant = participants[0];
+        const participant = participants.Items[0];
 
         // Update participant connection status
         await Participant.update(participant.id, {
@@ -500,12 +551,24 @@ exports.handleReconnect = async (req, res) => {
     try {
         const { sessionId } = req.body;
         
-        // Find participant by sessionId
-        const participants = await Participant.findBySessionId(sessionId);
-        if (!participants || participants.length === 0) {
+        // Find participant by sessionId and deviceId
+        const participants = await docClient.send(new ScanCommand({
+            TableName: Participant.tableName,
+            FilterExpression: '(#si = :sessionId OR #di = :deviceId)',
+            ExpressionAttributeNames: {
+                '#si': 'sessionId',
+                '#di': 'deviceId'
+            },
+            ExpressionAttributeValues: {
+                ':sessionId': sessionId,
+                ':deviceId': req.body.deviceId
+            }
+        }));
+        
+        if (!participants.Items || participants.Items.length === 0) {
             return res.status(404).json({ success: false, error: 'Participant not found' });
         }
-        const participant = participants[0];
+        const participant = participants.Items[0];
 
         // Update participant connection status
         await Participant.update(participant.id, {

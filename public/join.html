@@ -250,20 +250,41 @@
         }
     </style>
     <script>
+        // Function to generate a device fingerprint
+        function generateDeviceFingerprint() {
+            const screenRes = `${window.screen.width}x${window.screen.height}`;
+            const colorDepth = window.screen.colorDepth;
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const language = navigator.language;
+            const platform = navigator.platform;
+            const userAgent = navigator.userAgent;
+            
+            // Combine all values and hash them
+            const fingerprint = `${screenRes}-${colorDepth}-${timezone}-${language}-${platform}-${userAgent}`;
+            return btoa(fingerprint).replace(/[^a-zA-Z0-9]/g, '');
+        }
+
         const socket = io({
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            timeout: 20000
+            timeout: 20000,
+            query: {
+                deviceId: generateDeviceFingerprint()
+            }
         });
-        let sessionId = null;
+        
+        // Try to restore session from localStorage
+        let sessionId = localStorage.getItem('quizSessionId');
+        let quizId = localStorage.getItem('quizId');
         let currentQuestion = -1;
         let hasAnswered = false;
         let isConnected = false;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 10;
+        let isInQuiz = false;
 
         // Add connection status indicator
         const statusDiv = document.createElement('div');
@@ -293,13 +314,17 @@
 
         // Enhanced reconnection handling
         async function attemptReconnect() {
+            if (!isInQuiz) return;
+
             if (reconnectAttempts >= maxReconnectAttempts) {
                 console.log('Max reconnection attempts reached');
                 updateConnectionStatus('Disconnected', 'Unable to reconnect after multiple attempts. Please refresh the page.');
                 return;
             }
 
-            updateConnectionStatus('Reconnecting', `Attempt ${reconnectAttempts + 1}/${maxReconnectAttempts}`);
+            if (!isConnected) {
+                updateConnectionStatus('Reconnecting', `Attempt ${reconnectAttempts + 1}/${maxReconnectAttempts}`);
+            }
 
             try {
                 const response = await fetch('/api/live/reconnect', {
@@ -307,14 +332,21 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ sessionId })
+                    body: JSON.stringify({ 
+                        sessionId,
+                        deviceId: generateDeviceFingerprint()
+                    })
                 });
 
                 const data = await response.json();
                 if (data.success) {
                     console.log('Successfully reconnected to quiz');
                     reconnectAttempts = 0;
-                    socket.emit('join-quiz', { sessionId });
+                    socket.emit('join-quiz', { 
+                        sessionId,
+                        deviceId: generateDeviceFingerprint()
+                    });
+                    updateConnectionStatus('Connected');
                 }
             } catch (error) {
                 console.error('Error reconnecting:', error);
@@ -331,20 +363,59 @@
             const name = document.getElementById('participantName').value;
 
             try {
+                // Check if we already have a session for this quiz
+                if (sessionId && quizId) {
+                    // Try to reconnect to existing session
+                    const reconnectResponse = await fetch('/api/live/reconnect', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            sessionId,
+                            deviceId: generateDeviceFingerprint()
+                        })
+                    });
+
+                    const reconnectData = await reconnectResponse.json();
+                    if (reconnectData.success) {
+                        document.getElementById('joinForm').style.display = 'none';
+                        document.getElementById('quizSection').style.display = 'block';
+                        isInQuiz = true;
+                        socket.emit('join-quiz', { 
+                            sessionId,
+                            deviceId: generateDeviceFingerprint()
+                        });
+                        return;
+                    }
+                }
+
+                // If no existing session or reconnect failed, create new session
                 const response = await fetch('/api/live/join', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ sessionCode, name })
+                    body: JSON.stringify({ 
+                        sessionCode, 
+                        name,
+                        deviceId: generateDeviceFingerprint()
+                    })
                 });
 
                 const data = await response.json();
                 if (data.success) {
                     sessionId = data.data.sessionId;
+                    quizId = data.data.quizId;
+                    localStorage.setItem('quizSessionId', sessionId);
+                    localStorage.setItem('quizId', quizId);
                     document.getElementById('joinForm').style.display = 'none';
                     document.getElementById('quizSection').style.display = 'block';
-                    socket.emit('join-quiz', { sessionId: data.data.sessionId });
+                    isInQuiz = true;
+                    socket.emit('join-quiz', { 
+                        sessionId: data.data.sessionId,
+                        deviceId: generateDeviceFingerprint()
+                    });
                     console.log('Joining quiz with session ID:', data.data.sessionId);
                 } else {
                     alert('Failed to join quiz: ' + data.error);
@@ -366,19 +437,24 @@
         socket.on('connect', () => {
             console.log('Socket connected');
             isConnected = true;
+            reconnectAttempts = 0;
             updateConnectionStatus('Connected');
-            if (sessionId) {
+            
+            // Only attempt reconnect if we're already in a quiz
+            if (sessionId && isInQuiz) {
                 attemptReconnect();
             }
         });
 
         socket.on('connect_error', (error) => {
             console.error('Connection error:', error);
+            isConnected = false;
             updateConnectionStatus('Disconnected', `Connection error: ${error.message}`);
         });
 
         socket.on('connect_timeout', () => {
             console.error('Connection timeout');
+            isConnected = false;
             updateConnectionStatus('Disconnected', 'Connection timeout. Please check your internet connection.');
         });
 
@@ -395,7 +471,10 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ sessionId })
+                        body: JSON.stringify({ 
+                            sessionId,
+                            deviceId: generateDeviceFingerprint()
+                        })
                     });
                 } catch (error) {
                     console.error('Error notifying server about disconnection:', error);
@@ -409,7 +488,7 @@
             document.getElementById('questionContainer').style.display = 'none';
 
             // Attempt to reconnect with exponential backoff
-            if (sessionId) {
+            if (sessionId && isInQuiz) {
                 const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
                 setTimeout(attemptReconnect, delay);
             }
@@ -420,6 +499,18 @@
             if (currentQuestion >= 0) {
                 showQuestion(data);
             }
+        });
+
+        socket.on('quiz-ended', () => {
+            document.getElementById('questionContainer').style.display = 'none';
+            document.getElementById('waitingMessage').textContent = 'Quiz has ended';
+            document.getElementById('waitingMessage').style.display = 'block';
+            // Clear session data
+            localStorage.removeItem('quizSessionId');
+            localStorage.removeItem('quizId');
+            sessionId = null;
+            quizId = null;
+            isInQuiz = false;
         });
 
         let myScore = 0;
@@ -449,17 +540,6 @@
             if (data.currentQuestion >= 0) {
                 showQuestion(data);
             }
-        });
-
-        // Add debug events
-        socket.on('connect', () => {
-            console.log('Socket connected, ID:', socket.id);
-        });
-
-        socket.on('disconnect', () => {
-            console.log('Socket disconnected');
-            document.getElementById('waitingMessage').style.display = 'block';
-            document.getElementById('questionContainer').style.display = 'none';
         });
 
         socket.on('error', (error) => {
@@ -498,16 +578,6 @@
                     </div>
                 `)
                 .join('');
-        });
-
-        socket.on('quiz-ended', () => {
-            document.getElementById('questionContainer').style.display = 'none';
-            document.getElementById('waitingMessage').textContent = 'Quiz has ended';
-            document.getElementById('waitingMessage').style.display = 'block';
-        });
-
-        socket.on('error', (message) => {
-            alert('Error: ' + message);
         });
 
         function showQuestion(data) {
@@ -628,6 +698,7 @@
                     },
                     body: JSON.stringify({
                         sessionId,
+                        deviceId: generateDeviceFingerprint(),
                         answers: answers
                     })
                 });
@@ -667,7 +738,6 @@
                 console.error('Error submitting answer:', error);
             }
         }
-
     </script>
 </body>
 </html>
